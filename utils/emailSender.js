@@ -48,5 +48,13 @@ const sendOrderEmails = async (order) => {
     return false;
   }
 };
+// Test the connection on startup
+transporter.verify((error, success) => {
+  if (error) {
+    console.error("❌ Nodemailer Setup Error:", error.message);
+  } else {
+    console.log("🚀 Nodemailer is ready to send emails!");
+  }
+});
 
 module.exports = { sendOrderEmails };

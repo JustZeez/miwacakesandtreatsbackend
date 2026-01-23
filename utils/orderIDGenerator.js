@@ -1,5 +1,5 @@
 const generateOrderId = (customerFullName) => {
-  const now = new Date();
+  const now = new Date(new Date().toLocaleString("en-US", {timeZone: "Africa/Lagos"}));
 
   const firstName = customerFullName.split(" ")[0] || customerFullName;
 
