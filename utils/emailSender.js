@@ -6,16 +6,18 @@ const {
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
-  port: 465,
+  port: 465, 
   secure: true, 
   auth: {
     user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS, 
+    pass: process.env.EMAIL_PASS,
   },
+  connectionTimeout: 20000, 
+  greetingTimeout: 15000,
+  socketTimeout: 20000,
   tls: {
-    
-  },
-  connectionTimeout: 15000, 
+    rejectUnauthorized: false
+  }
 });
 
 const sendOrderEmails = async (order) => {
