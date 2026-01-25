@@ -6,20 +6,22 @@ const {
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
-  port: 465, 
-  secure: true, 
+  port: 465,
+  secure: true, // Must be true for port 465
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  connectionTimeout: 20000, 
-  greetingTimeout: 15000,
-  socketTimeout: 20000,
+  // These settings are critical for hosted environments like Render
+  debug: true, // This will show detailed logs in Render console
+  logger: true, // This will log the SMTP traffic
   tls: {
-    rejectUnauthorized: false
-  }
+    rejectUnauthorized: false // Prevents timeout from strict SSL checks
+  },
+  connectionTimeout: 20000, // 20 seconds
+  greetingTimeout: 15000,
+  socketTimeout: 30000,
 });
-
 const sendOrderEmails = async (order) => {
   try {
     console.log("📧 Attempting to send emails...");
