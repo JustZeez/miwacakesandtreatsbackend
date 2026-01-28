@@ -22,8 +22,8 @@ app.use(helmet());
 app.use(limiter);
 app.use(cors({
     origin: process.env.FRONTEND_URL ||
-     'http://localhost:5173',
-    // 'https://miwacakesandtreatsfrontend.vercel.app',
+    //  'http://localhost:5173',
+    'https://miwacakesandtreatsfrontend.vercel.app',
     credentials:true
 }));
 app.use(express.json());
