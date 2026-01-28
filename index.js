@@ -20,11 +20,29 @@ const limiter = rateLimit({
 
 app.use(helmet());
 app.use(limiter);
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'https://miwacakesandtreatsfrontend.vercel.app',
+  'http://localhost:5173' // for local development
+].filter(Boolean); // Remove any undefined/null values
+
 app.use(cors({
-    origin: process.env.FRONTEND_URL ||
-    //  'http://localhost:5173',
-    'https://miwacakesandtreatsfrontend.vercel.app',
-    credentials:true
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+    
+    // Check if origin is in allowedOrigins
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
 }));
 app.use(express.json());
 app.use(express.urlencoded({extended: true}));
