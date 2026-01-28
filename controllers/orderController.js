@@ -1,6 +1,5 @@
 const Order = require("../models/Order");
 const generateOrderId = require("../utils/orderIDGenerator");
-const { sendOrderEmails } = require("../utils/emailSender");
 const cloudinary = require("cloudinary").v2;
 
 cloudinary.config({
@@ -9,55 +8,100 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
+
+const getAdminDashboardStats = async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const [stats, recentOrders, topProducts] = await Promise.all([
+      Order.aggregate([
+        {
+          $facet: {
+            totalRevenue: [
+              { $match: { status: { $ne: 'cancelled' } } },
+              { $group: { _id: null, total: { $sum: "$totalAmount" } } }
+            ],
+            ordersToday: [
+              { $match: { createdAt: { $gte: today } } },
+              { $count: "count" }
+            ],
+            pendingCount: [
+              { $match: { status: "pending" } },
+              { $count: "count" }
+            ],
+            deliveredCount: [
+              { $match: { status: "delivered" } },
+              { $count: "count" }
+            ]
+          }
+        }
+      ]),
+
+      Order.find().sort({ createdAt: -1 }).limit(5),
+
+      Order.aggregate([
+        { $unwind: "$cartItems" },
+        {
+          $group: {
+            _id: "$cartItems.name",
+            sales: { $sum: "$cartItems.quantity" },
+            revenue: { $sum: "$cartItems.netPrice" }
+          }
+        },
+        { $sort: { sales: -1 } },
+        { $limit: 5 }
+      ])
+    ]);
+
+    res.json({
+      summary: {
+        revenue: stats[0].totalRevenue[0]?.total || 0,
+        ordersToday: stats[0].ordersToday[0]?.count || 0,
+        pending: stats[0].pendingCount[0]?.count || 0,
+        delivered: stats[0].deliveredCount[0]?.count || 0
+      },
+      recentOrders: recentOrders.map(o => ({
+        id: o.orderId,
+        customer: o.customerName,
+        amount: `₦${o.totalAmount.toLocaleString()}`,
+        items: o.cartItems.length,
+        status: o.status,
+        time: o.createdAt,
+        avatar: o.customerName.charAt(0),
+        color: "bg-pink-100 text-pink-700"
+      })),
+      topProducts: topProducts.map(p => ({
+        name: p._id,
+        sales: p.sales,
+        revenue: `₦${p.revenue.toLocaleString()}`,
+        trend: "up"
+      }))
+    });
+  } catch (error) {
+    res.status(500).json({ error: "Dashboard calculation failed", details: error.message });
+  }
+};
+
+
 const createOrder = async (req, res) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ error: "Payment proof is required" });
-    }
+    if (!req.file) return res.status(400).json({ error: "Payment proof is required" });
 
-    console.log("📁 File received via memory storage:", {
-      originalname: req.file.originalname,
-      mimetype: req.file.mimetype,
-      size: req.file.size + " bytes",
-      buffer: req.file.buffer ? "Yes" : "No",
-    });
-
-    const fileBuffer = req.file.buffer;
-
-    const fileBase64 = fileBuffer.toString("base64");
-
-    const fileDataUri = `data:${req.file.mimetype};base64,${fileBase64}`;
-
+    const fileDataUri = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
     const uploadResult = await cloudinary.uploader.upload(fileDataUri, {
       folder: "miwa-payments",
       resource_type: "auto",
     });
 
-    console.log("✅ Cloudinary upload success:", uploadResult.secure_url);
-
     const orderId = generateOrderId(req.body.customerName);
+    const cartItems = JSON.parse(req.body.cartItems).map(item => ({
+      ...item,
+      netPrice: item.price * item.quantity
+    }));
 
-    let cartItems = [];
-    let subtotal = 0;
-    let vat = 0;
-    let totalAmount = 0;
-
-    try {
-      cartItems = JSON.parse(req.body.cartItems);
-
-      cartItems = cartItems.map((item) => ({
-        ...item,
-        netPrice: item.price * item.quantity,
-      }));
-
-      subtotal = cartItems.reduce((sum, item) => sum + item.netPrice, 0);
-
-      vat = subtotal > 10000 ? 50 : 0;
-
-      totalAmount = subtotal + vat;
-    } catch (error) {
-      return res.status(400).json({ error: "Invalid cart items format" });
-    }
+    const subtotal = cartItems.reduce((sum, item) => sum + item.netPrice, 0);
+    const vat = subtotal > 10000 ? 50 : 0;
 
     const newOrder = new Order({
       orderId,
@@ -70,46 +114,219 @@ const createOrder = async (req, res) => {
       cartItems,
       subtotal,
       vat,
-      totalAmount,
+      totalAmount: subtotal + vat,
       status: "pending",
     });
 
-    const savedOrder = await newOrder.save();
-    console.log("💾 Order saved to database:", savedOrder.orderId);
-
-    await sendOrderEmails(savedOrder);
-    console.log("📧 Emails sent successfully");
-
-    res.status(201).json({
-      success: true,
-      message: "Order placed successfully!",
-      order: {
-        orderId: savedOrder.orderId,
-        customerName: savedOrder.customerName,
-        subtotal: savedOrder.subtotal,
-        vat: savedOrder.vat,
-        totalAmount: savedOrder.totalAmount,
-        paymentProofUrl: savedOrder.paymentProofUrl,
-      },
-    });
+    await newOrder.save();
+    res.status(201).json({ success: true, orderId });
   } catch (error) {
-    console.error("❌ Order creation error:", error.message);
+    res.status(500).json({ error: "Creation failed", details: error.message });
+  }
+};
 
-    if (error.message.includes("Missing required parameter - file")) {
-      console.error("Cloudinary issue: File not properly converted to base64");
+
+const getAllOrders = async (req, res) => {
+  try {
+    const orders = await Order.find().sort({ createdAt: -1 });
+    
+    const formattedOrders = orders.map(order => ({
+      _id: order._id,
+      orderId: order.orderId,
+      customerName: order.customerName,
+      customerEmail: order.customerEmail,
+      phone: order.phone,
+      whatsapp: order.whatsapp,
+      address: order.address,
+      paymentProofUrl: order.paymentProofUrl,
+      cartItems: order.cartItems,
+      subtotal: order.subtotal,
+      vat: order.vat,
+      totalAmount: order.totalAmount,
+      status: order.status,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt
+    }));
+    
+    res.status(200).json(formattedOrders);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// 4. GET ORDER BY ID (ADMIN)
+const getOrderById = async (req, res) => {
+  try {
+    const order = await Order.findOne({ orderId: req.params.id });
+    if (!order) return res.status(404).json({ error: "Order not found" });
+    res.json(order);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to fetch order" });
+  }
+};
+
+// 5. UPDATE ORDER STATUS (ADMIN)
+const updateOrderStatus = async (req, res) => {
+  try {
+    const { id } = req.params; // This is the _id from MongoDB
+    const { status } = req.body;
+    
+    console.log(`Update request: ID=${id}, Status=${status}`);
+    
+    // Validate status
+    const validStatuses = ['pending', 'confirmed', 'preparing', 'on delivery', 'delivered'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Invalid status. Must be: ${validStatuses.join(', ')}` 
+      });
     }
-
-    if (error.message.includes("cloud_name is disabled")) {
-      console.error("Cloudinary account issue: Check .env credentials");
+    
+    // Find and update - accept EITHER _id OR orderId
+    const order = await Order.findOneAndUpdate(
+      {
+        $or: [
+          { _id: id },           // Match by MongoDB _id
+          { orderId: id }        // Match by custom orderId
+        ]
+      },
+      { 
+        status: status,
+        updatedAt: new Date()
+      },
+      { 
+        new: true,      // Return updated document
+        runValidators: true 
+      }
+    );
+    
+    if (!order) {
+      console.log(`Order not found with ID: ${id}`);
+      return res.status(404).json({ 
+        success: false, 
+        message: `Order not found with ID: ${id}` 
+      });
     }
-
-    res.status(500).json({
-      error: "Failed to create order",
-      details: error.message,
+    
+    console.log(`Order updated: ${order.orderId} -> ${status}`);
+    
+    res.json({ 
+      success: true, 
+      message: `Order status updated to ${status}`,
+      order: {
+        _id: order._id,
+        orderId: order.orderId,
+        status: order.status,
+        customerName: order.customerName,
+        totalAmount: order.totalAmount,
+        updatedAt: order.updatedAt
+      }
+    });
+    
+  } catch (error) {
+    console.error('Update status error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to update order status',
+      error: error.message 
     });
   }
 };
 
+// 6. DELETE ORDER (ADMIN)
+// controllers/orderController.js - Add if missing
+const deleteOrder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Try to find by orderId first, then by _id
+    const order = await Order.findOneAndDelete({
+      $or: [
+        { orderId: id },
+        { _id: id }
+      ]
+    });
+    
+    if (!order) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Order not found' 
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Order deleted successfully',
+      deletedOrder: order 
+    });
+    
+  } catch (error) {
+    console.error('Delete error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to delete order',
+      error: error.message 
+    });
+  }
+};
+
+// 7. TRACK ORDER (PUBLIC)
+const trackOrder = async (req, res) => {
+  try {
+    const { orderId, phone } = req.query;
+    
+    if (!orderId || !phone) {
+      return res.status(400).json({ message: 'Order ID and Phone Number are required' });
+    }
+    
+    const order = await Order.findOne({
+      $or: [{ orderId }, { _id: orderId }],
+      phone: phone
+    });
+    
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found. Please check your details.' });
+    }
+    
+    if (order.status === 'delivered') {
+      return res.json({ 
+        delivered: true,
+        message: 'Order has been delivered successfully!' 
+      });
+    }
+    
+    res.json(order);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// 8. ADMIN LOGIN (PUBLIC)
+const adminLogin = (req, res) => {
+  const { password } = req.body;
+  const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+  
+  if (!ADMIN_PASSWORD) {
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Admin password not configured' 
+    });
+  }
+  
+  if (password === ADMIN_PASSWORD) {
+    return res.json({ 
+      success: true, 
+      token: ADMIN_PASSWORD
+    });
+  }
+  
+  return res.status(401).json({ 
+    success: false, 
+    message: 'Invalid password' 
+  });
+};
+
+// 9. GET ORDERS (for public routes - different from getAllOrders)
 const getOrders = async (req, res) => {
   try {
     const orders = await Order.find().sort({ createdAt: -1 });
@@ -119,22 +336,14 @@ const getOrders = async (req, res) => {
   }
 };
 
-const getOrderById = async (req, res) => {
-  try {
-    const order = await Order.findOne({ orderId: req.params.id });
-
-    if (!order) {
-      return res.status(404).json({ error: "Order not found" });
-    }
-
-    res.json(order);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch order" });
-  }
-};
-
-module.exports = {
+module.exports = { 
+  getAdminDashboardStats,
   createOrder,
-  getOrders,
+  getAllOrders,
   getOrderById,
+  updateOrderStatus,
+  deleteOrder,
+  trackOrder,
+  adminLogin,
+  getOrders
 };
