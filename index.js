@@ -7,7 +7,7 @@ const dotenv = require("dotenv").config();
 const orderRoutes = require("./routes/orderRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const app = express();
-const cookieParser =  require('cookie-parser');
+const cookieParser = require("cookie-parser");
 const PORT = process.env.PORT || 5000;
 
 connectDB();
@@ -42,7 +42,7 @@ app.use(
       }
     },
     credentials: true,
-    exposedHeaders: ['set-cookie'], // ✅ Add this line
+    exposedHeaders: ["set-cookie"],
   }),
 );
 app.use(express.json());
