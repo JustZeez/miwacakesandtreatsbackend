@@ -8,7 +8,6 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-
 const getAdminDashboardStats = async (req, res) => {
   try {
     const today = new Date();
@@ -19,23 +18,23 @@ const getAdminDashboardStats = async (req, res) => {
         {
           $facet: {
             totalRevenue: [
-              { $match: { status: { $ne: 'cancelled' } } },
-              { $group: { _id: null, total: { $sum: "$totalAmount" } } }
+              { $match: { status: { $ne: "cancelled" } } },
+              { $group: { _id: null, total: { $sum: "$totalAmount" } } },
             ],
             ordersToday: [
               { $match: { createdAt: { $gte: today } } },
-              { $count: "count" }
+              { $count: "count" },
             ],
             pendingCount: [
               { $match: { status: "pending" } },
-              { $count: "count" }
+              { $count: "count" },
             ],
             deliveredCount: [
               { $match: { status: "delivered" } },
-              { $count: "count" }
-            ]
-          }
-        }
+              { $count: "count" },
+            ],
+          },
+        },
       ]),
 
       Order.find().sort({ createdAt: -1 }).limit(5),
@@ -46,12 +45,12 @@ const getAdminDashboardStats = async (req, res) => {
           $group: {
             _id: "$cartItems.name",
             sales: { $sum: "$cartItems.quantity" },
-            revenue: { $sum: "$cartItems.netPrice" }
-          }
+            revenue: { $sum: "$cartItems.netPrice" },
+          },
         },
         { $sort: { sales: -1 } },
-        { $limit: 5 }
-      ])
+        { $limit: 5 },
+      ]),
     ]);
 
     res.json({
@@ -59,9 +58,9 @@ const getAdminDashboardStats = async (req, res) => {
         revenue: stats[0].totalRevenue[0]?.total || 0,
         ordersToday: stats[0].ordersToday[0]?.count || 0,
         pending: stats[0].pendingCount[0]?.count || 0,
-        delivered: stats[0].deliveredCount[0]?.count || 0
+        delivered: stats[0].deliveredCount[0]?.count || 0,
       },
-      recentOrders: recentOrders.map(o => ({
+      recentOrders: recentOrders.map((o) => ({
         id: o.orderId,
         customer: o.customerName,
         amount: `₦${o.totalAmount.toLocaleString()}`,
@@ -69,24 +68,26 @@ const getAdminDashboardStats = async (req, res) => {
         status: o.status,
         time: o.createdAt,
         avatar: o.customerName.charAt(0),
-        color: "bg-pink-100 text-pink-700"
+        color: "bg-pink-100 text-pink-700",
       })),
-      topProducts: topProducts.map(p => ({
+      topProducts: topProducts.map((p) => ({
         name: p._id,
         sales: p.sales,
         revenue: `₦${p.revenue.toLocaleString()}`,
-        trend: "up"
-      }))
+        trend: "up",
+      })),
     });
   } catch (error) {
-    res.status(500).json({ error: "Dashboard calculation failed", details: error.message });
+    res
+      .status(500)
+      .json({ error: "Dashboard calculation failed", details: error.message });
   }
 };
 
-
 const createOrder = async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ error: "Payment proof is required" });
+    if (!req.file)
+      return res.status(400).json({ error: "Payment proof is required" });
 
     const fileDataUri = `data:${req.file.mimetype};base64,${req.file.buffer.toString("base64")}`;
     const uploadResult = await cloudinary.uploader.upload(fileDataUri, {
@@ -95,9 +96,9 @@ const createOrder = async (req, res) => {
     });
 
     const orderId = generateOrderId(req.body.customerName);
-    const cartItems = JSON.parse(req.body.cartItems).map(item => ({
+    const cartItems = JSON.parse(req.body.cartItems).map((item) => ({
       ...item,
-      netPrice: item.price * item.quantity
+      netPrice: item.price * item.quantity,
     }));
 
     const subtotal = cartItems.reduce((sum, item) => sum + item.netPrice, 0);
@@ -125,12 +126,11 @@ const createOrder = async (req, res) => {
   }
 };
 
-
 const getAllOrders = async (req, res) => {
   try {
     const orders = await Order.find().sort({ createdAt: -1 });
-    
-    const formattedOrders = orders.map(order => ({
+
+    const formattedOrders = orders.map((order) => ({
       _id: order._id,
       orderId: order.orderId,
       customerName: order.customerName,
@@ -145,16 +145,15 @@ const getAllOrders = async (req, res) => {
       totalAmount: order.totalAmount,
       status: order.status,
       createdAt: order.createdAt,
-      updatedAt: order.updatedAt
+      updatedAt: order.updatedAt,
     }));
-    
+
     res.status(200).json(formattedOrders);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// 4. GET ORDER BY ID (ADMIN)
 const getOrderById = async (req, res) => {
   try {
     const order = await Order.findOne({ orderId: req.params.id });
@@ -165,53 +164,53 @@ const getOrderById = async (req, res) => {
   }
 };
 
-// 5. UPDATE ORDER STATUS (ADMIN)
 const updateOrderStatus = async (req, res) => {
   try {
-    const { id } = req.params; // This is the _id from MongoDB
+    const { id } = req.params;
     const { status } = req.body;
-    
+
     console.log(`Update request: ID=${id}, Status=${status}`);
-    
-    // Validate status
-    const validStatuses = ['pending', 'confirmed', 'preparing', 'on delivery', 'delivered'];
+
+    const validStatuses = [
+      "pending",
+      "confirmed",
+      "preparing",
+      "on delivery",
+      "delivered",
+    ];
     if (!validStatuses.includes(status)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Invalid status. Must be: ${validStatuses.join(', ')}` 
+      return res.status(400).json({
+        success: false,
+        message: `Invalid status. Must be: ${validStatuses.join(", ")}`,
       });
     }
-    
-    // Find and update - accept EITHER _id OR orderId
+
     const order = await Order.findOneAndUpdate(
       {
-        $or: [
-          { _id: id },           // Match by MongoDB _id
-          { orderId: id }        // Match by custom orderId
-        ]
+        $or: [{ _id: id }, { orderId: id }],
       },
-      { 
+      {
         status: status,
-        updatedAt: new Date()
+        updatedAt: new Date(),
       },
-      { 
-        new: true,      // Return updated document
-        runValidators: true 
-      }
+      {
+        new: true,
+        runValidators: true,
+      },
     );
-    
+
     if (!order) {
       console.log(`Order not found with ID: ${id}`);
-      return res.status(404).json({ 
-        success: false, 
-        message: `Order not found with ID: ${id}` 
+      return res.status(404).json({
+        success: false,
+        message: `Order not found with ID: ${id}`,
       });
     }
-    
+
     console.log(`Order updated: ${order.orderId} -> ${status}`);
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       message: `Order status updated to ${status}`,
       order: {
         _id: order._id,
@@ -219,114 +218,107 @@ const updateOrderStatus = async (req, res) => {
         status: order.status,
         customerName: order.customerName,
         totalAmount: order.totalAmount,
-        updatedAt: order.updatedAt
-      }
+        updatedAt: order.updatedAt,
+      },
     });
-    
   } catch (error) {
-    console.error('Update status error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to update order status',
-      error: error.message 
+    console.error("Update status error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update order status",
+      error: error.message,
     });
   }
 };
 
-// 6. DELETE ORDER (ADMIN)
-// controllers/orderController.js - Add if missing
 const deleteOrder = async (req, res) => {
   try {
     const { id } = req.params;
-    
-    // Try to find by orderId first, then by _id
+
     const order = await Order.findOneAndDelete({
-      $or: [
-        { orderId: id },
-        { _id: id }
-      ]
+      $or: [{ orderId: id }, { _id: id }],
     });
-    
+
     if (!order) {
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Order not found' 
+      return res.status(404).json({
+        success: false,
+        message: "Order not found",
       });
     }
-    
-    res.json({ 
-      success: true, 
-      message: 'Order deleted successfully',
-      deletedOrder: order 
+
+    res.json({
+      success: true,
+      message: "Order deleted successfully",
+      deletedOrder: order,
     });
-    
   } catch (error) {
-    console.error('Delete error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to delete order',
-      error: error.message 
+    console.error("Delete error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete order",
+      error: error.message,
     });
   }
 };
 
-// 7. TRACK ORDER (PUBLIC)
 const trackOrder = async (req, res) => {
   try {
     const { orderId, phone } = req.query;
-    
+
     if (!orderId || !phone) {
-      return res.status(400).json({ message: 'Order ID and Phone Number are required' });
+      return res
+        .status(400)
+        .json({ message: "Order ID and Phone Number are required" });
     }
-    
+
     const order = await Order.findOne({
       $or: [{ orderId }, { _id: orderId }],
-      phone: phone
+      phone: phone,
     });
-    
+
     if (!order) {
-      return res.status(404).json({ message: 'Order not found. Please check your details.' });
+      return res
+        .status(404)
+        .json({ message: "Order not found. Please check your details." });
     }
-    
-    if (order.status === 'delivered') {
-      return res.json({ 
+
+    if (order.status === "delivered") {
+      return res.json({
         delivered: true,
-        message: 'Order has been delivered successfully!' 
+        message: "Order has been delivered successfully!",
       });
     }
-    
+
     res.json(order);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// 8. ADMIN LOGIN (PUBLIC)
 const adminLogin = (req, res) => {
   const { password } = req.body;
   const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-  
+
   if (!ADMIN_PASSWORD) {
-    return res.status(500).json({ 
-      success: false, 
-      message: 'Admin password not configured' 
+    return res.status(500).json({
+      success: false,
+      message: "Admin password not configured",
     });
   }
-  
+
   if (password === ADMIN_PASSWORD) {
-    return res.json({ 
-      success: true, 
-      token: ADMIN_PASSWORD
+    return res.json({
+      success: true,
+      token: ADMIN_PASSWORD,
     });
   }
-  
-  return res.status(401).json({ 
-    success: false, 
-    message: 'Invalid password' 
+
+  return res.status(401).json({
+    success: false,
+    message: "Invalid password",
   });
 };
 
-// 9. GET ORDERS (for public routes - different from getAllOrders)
 const getOrders = async (req, res) => {
   try {
     const orders = await Order.find().sort({ createdAt: -1 });
@@ -336,7 +328,7 @@ const getOrders = async (req, res) => {
   }
 };
 
-module.exports = { 
+module.exports = {
   getAdminDashboardStats,
   createOrder,
   getAllOrders,
@@ -345,5 +337,5 @@ module.exports = {
   deleteOrder,
   trackOrder,
   adminLogin,
-  getOrders
+  getOrders,
 };
