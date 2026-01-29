@@ -261,40 +261,101 @@ const deleteOrder = async (req, res) => {
   }
 };
 
+// const trackOrder = async (req, res) => {
+//   try {
+//     const { orderId, phone } = req.query;
+
+//     if (!orderId || !phone) {
+//       return res
+//         .status(400)
+//         .json({ message: "Order ID and Phone Number are required" });
+//     }
+
+//     const order = await Order.findOne({
+//       $or: [{ orderId }, { _id: orderId }],
+//       phone: phone,
+//     });
+
+//     if (!order) {
+//       return res
+//         .status(404)
+//         .json({ message: "Order not found. Please check your details." });
+//     }
+
+//     if (order.status === "delivered") {
+//       return res.json({
+//         delivered: true,
+//         message: "Order has been delivered successfully!",
+//       });
+//     }
+
+//     res.json(order);
+//   } catch (error) {
+//     res.status(500).json({ error: error.message });
+//   }
+// };
 const trackOrder = async (req, res) => {
   try {
-    const { orderId, phone } = req.query;
+    const { orderId } = req.params; // Get from URL params
+    const { phone } = req.query;    // Get from query string
+
+    console.log("=== TRACKING REQUEST ===");
+    console.log("orderId (param):", orderId);
+    console.log("phone (query):", phone);
+    console.log("Full URL:", req.originalUrl);
 
     if (!orderId || !phone) {
-      return res
-        .status(400)
-        .json({ message: "Order ID and Phone Number are required" });
+      return res.status(400).json({ 
+        message: "Order ID and Phone Number are required" 
+      });
     }
 
+    // Try multiple search patterns
     const order = await Order.findOne({
-      $or: [{ orderId }, { _id: orderId }],
-      phone: phone,
+      $or: [
+        { orderId: orderId },
+        { _id: orderId }
+      ],
+      phone: phone
     });
 
+    console.log("Found order:", order ? "YES" : "NO");
+    
     if (!order) {
-      return res
-        .status(404)
-        .json({ message: "Order not found. Please check your details." });
+      // Log what's in database for debugging
+      const allOrders = await Order.find({}).select('orderId phone');
+      console.log("All orders in DB:", allOrders);
+      
+      return res.status(404).json({ 
+        message: "Order not found. Please check your details.",
+        debug: {
+          searchedOrderId: orderId,
+          searchedPhone: phone,
+          availableOrders: allOrders.map(o => ({ orderId: o.orderId, phone: o.phone }))
+        }
+      });
     }
 
     if (order.status === "delivered") {
       return res.json({
         delivered: true,
         message: "Order has been delivered successfully!",
+        order: order
       });
     }
 
-    res.json(order);
+    // Return order without sensitive data
+    const { password, ...orderData } = order.toObject();
+    res.json(orderData);
+    
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    console.error("Track order error:", error);
+    res.status(500).json({ 
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
-
 const adminLogin = (req, res) => {
   const { password } = req.body;
   const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
