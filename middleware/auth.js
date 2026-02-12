@@ -45,44 +45,31 @@ exports.adminLogin = (req, res) => {
 
 exports.verifyAdmin = (req, res, next) => {
   console.log("\n=== Auth Check ===");
-  console.log("Path:", req.path);
-  console.log("Cookies:", req.cookies);
-  console.log(
-    "x-admin-password header:",
-    req.headers["x-admin-password"] ? "present" : "not present",
-  );
-  console.log(
-    "Authorization header:",
-    req.headers.authorization || "not present",
-  );
-
-  let token = null;
-
-  if (req.cookies && req.cookies.adminToken) {
-    token = req.cookies.adminToken;
-    console.log("✓ Authenticated via cookie");
-  }
-  else if (req.headers["x-admin-password"]) {
-    token = req.headers["x-admin-password"];
-    console.log("✓ Authenticated via x-admin-password header");
-  }
-  else if (req.headers.authorization && req.headers.authorization.startsWith("Bearer ")) {
-    token = req.headers.authorization.split(" ")[1];
-    console.log("✓ Authenticated via Authorization header");
+  
+  // ✅ Check for x-admin-password header first
+  const adminPassword = req.headers["x-admin-password"];
+  
+  if (adminPassword && adminPassword === process.env.ADMIN_PASSWORD) {
+    console.log("✓ Authenticated via admin password");
+    return next();
   }
 
-  if (token) {
-    try {
+  // Fallback to JWT token verification (for future use)
+  try {
+    const token = req.cookies?.adminToken || 
+                  req.headers.authorization?.split(" ")[1];
+    
+    if (token) {
       const verified = jwt.verify(token, JWT_SECRET);
       req.user = verified;
-      console.log("✓ Token verified");
+      console.log("✓ Authenticated via JWT token");
       return next();
-    } catch (error) {
-      console.log("✗ JWT verification failed:", error.message);
     }
+  } catch (error) {
+    console.log("✗ JWT verification failed:", error.message);
   }
 
-  console.log("✗ Authentication failed - no valid credentials");
+  console.log("✗ Authentication failed");
   return res.status(401).json({
     success: false,
     message: "Unauthorized: Invalid credentials",
