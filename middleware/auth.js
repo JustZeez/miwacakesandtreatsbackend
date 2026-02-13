@@ -21,13 +21,12 @@ exports.adminLogin = (req, res) => {
 
     console.log("✓ Login successful, token generated");
 
- 
-    res.cookie('adminToken', token, {
+    res.cookie("adminToken", token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'none',
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "none",
       maxAge: 24 * 60 * 60 * 1000,
-      path: '/',
+      path: "/",
     });
 
     return res.json({
@@ -45,20 +44,18 @@ exports.adminLogin = (req, res) => {
 
 exports.verifyAdmin = (req, res, next) => {
   console.log("\n=== Auth Check ===");
-  
-  // ✅ Check for x-admin-password header first
+
   const adminPassword = req.headers["x-admin-password"];
-  
+
   if (adminPassword && adminPassword === process.env.ADMIN_PASSWORD) {
     console.log("✓ Authenticated via admin password");
     return next();
   }
 
-  // Fallback to JWT token verification (for future use)
   try {
-    const token = req.cookies?.adminToken || 
-                  req.headers.authorization?.split(" ")[1];
-    
+    const token =
+      req.cookies?.adminToken || req.headers.authorization?.split(" ")[1];
+
     if (token) {
       const verified = jwt.verify(token, JWT_SECRET);
       req.user = verified;

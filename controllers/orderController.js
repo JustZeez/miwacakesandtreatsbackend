@@ -266,41 +266,37 @@ const trackOrder = async (req, res) => {
     console.log("=== TRACK ORDER REQUEST ===");
     console.log("Params:", req.params);
     console.log("Query:", req.query);
-    
+
     const { orderId } = req.params;
     const { phone } = req.query;
 
-    // Basic validation
     if (!orderId || !phone) {
       return res.status(400).json({
         success: false,
         message: "Order ID and Phone Number are required",
-        received: { orderId, phone }
+        received: { orderId, phone },
       });
     }
 
-    // Clean inputs
     const cleanOrderId = orderId.trim();
     const cleanPhone = phone.trim();
 
     console.log("Searching for order with:", {
       cleanOrderId,
-      cleanPhone
+      cleanPhone,
     });
 
-    // Try to find the order
     const order = await Order.findOne({
-      orderId: cleanOrderId, // Your model has orderId field
-      phone: cleanPhone
+      orderId: cleanOrderId,
+      phone: cleanPhone,
     });
 
     console.log("Order found:", order ? "YES" : "NO");
 
     if (!order) {
-      // List available orders for debugging
       try {
         const allOrders = await Order.find({})
-          .select('orderId phone customerName -_id')
+          .select("orderId phone customerName -_id")
           .limit(10);
         console.log("First 10 orders in DB:", allOrders);
       } catch (dbError) {
@@ -309,15 +305,15 @@ const trackOrder = async (req, res) => {
 
       return res.status(404).json({
         success: false,
-        message: "Order not found. Please check your Order ID and Phone Number.",
+        message:
+          "Order not found. Please check your Order ID and Phone Number.",
         searched: {
           orderId: cleanOrderId,
-          phone: cleanPhone
-        }
+          phone: cleanPhone,
+        },
       });
     }
 
-    // Format the response according to your model
     const orderResponse = {
       success: true,
       orderId: order.orderId,
@@ -330,32 +326,30 @@ const trackOrder = async (req, res) => {
       subtotal: order.subtotal || 0,
       vat: order.vat || 0,
       totalAmount: order.totalAmount || 0,
-      status: order.status || 'pending',
-      orderDate: order.orderDate || order.createdAt, // Use orderDate from your model
-      paymentProofUrl: order.paymentProofUrl
+      status: order.status || "pending",
+      orderDate: order.orderDate || order.createdAt,
+      paymentProofUrl: order.paymentProofUrl,
     };
 
     console.log("Returning order:", orderResponse.orderId);
 
     res.json(orderResponse);
-
   } catch (error) {
     console.error("=== TRACK ORDER ERROR ===");
     console.error("Error:", error.message);
     console.error("Stack:", error.stack);
-    
-    // Check if it's a MongoDB connection error
-    if (error.name === 'MongoError' || error.name === 'MongooseError') {
+
+    if (error.name === "MongoError" || error.name === "MongooseError") {
       return res.status(503).json({
         success: false,
-        message: "Database connection error. Please try again later."
+        message: "Database connection error. Please try again later.",
       });
     }
-    
+
     res.status(500).json({
       success: false,
       message: "Internal server error while tracking order",
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
