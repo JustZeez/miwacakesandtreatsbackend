@@ -1,48 +1,45 @@
+const nodemailer = require('nodemailer');
+const { getMiwaEmailTemplate, getCustomerEmailTemplate } = require('./emailTemplates');
 
-// const { getMiwaEmailTemplate, getCustomerEmailTemplate } = require("./emailTemplates");
+// Create transporter
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
 
-// const resend = new Resend(process.env.RESEND_API_KEY);
+const sendOrderEmails = async (order) => {
+  try {
+    // Email to Miwa
+    const miwaMailOptions = {
+      from: `"Miwa Cakes Website" <${process.env.EMAIL_USER}>`,
+      to: process.env.EMAIL_USER, // Send to Miwa's email
+      subject: `🎂 NEW ORDER: ${order.orderId} from ${order.customerName}`,
+      html: getMiwaEmailTemplate(order)
+    };
 
-// const sendOrderEmails = async (order) => {
-//   try {
-//     console.log("📧 Attempting Resend API with fixed formatting...");
+    // Email to Customer
+    const customerMailOptions = {
+      from: `"Miwa Cakes & Treats" <${process.env.EMAIL_USER}>`,
+      to: order.customerEmail,
+      subject: `✅ Order Confirmed: ${order.orderId}`,
+      html: getCustomerEmailTemplate(order)
+    };
 
-//     // This MUST be the email you used to sign up for Resend
-//     const myVerifiedEmail = "agunbiademiwa@gmail.com"; 
+    // Send both emails
+    await transporter.sendMail(miwaMailOptions);
+    console.log('📧 Email sent to Miwa');
+    
+    await transporter.sendMail(customerMailOptions);
+    console.log('📧 Email sent to customer');
 
-//     // Test 1: Notification to you (as the owner)
-//     const miwaResponse = await resend.emails.send({
-//       from: 'onboarding@resend.dev', // Keep this EXACTLY like this
-//       to: myVerifiedEmail,
-//       subject: `🎂 NEW ORDER: ${order.orderId}`,
-//       html: getMiwaEmailTemplate(order),
-//     });
+    return true;
+  } catch (error) {
+    console.error('❌ Email sending error:', error);
+    throw new Error('Failed to send emails');
+  }
+};
 
-//     if (miwaResponse.error) {
-//       console.error("❌ Resend Error (Miwa Email):", miwaResponse.error.message);
-//     } else {
-//       console.log("✅ Email 1 (Owner) sent to Resend Queue");
-//     }
-
-//     // Test 2: Confirmation (Sent to YOU also, to bypass the restriction)
-//     const customerResponse = await resend.emails.send({
-//       from: 'onboarding@resend.dev', 
-//       to: myVerifiedEmail, 
-//       subject: `✅ Order Confirmed: ${order.orderId}`,
-//       html: getCustomerEmailTemplate(order),
-//     });
-
-//     if (customerResponse.error) {
-//       console.error("❌ Resend Error (Customer Email):", customerResponse.error.message);
-//     } else {
-//       console.log("✅ Email 2 (Customer) sent to Resend Queue");
-//     }
-
-//     return true;
-//   } catch (err) {
-//     console.error("❌ System Error:", err.message);
-//     return false;
-//   }
-// };
-
-// module.exports = { sendOrderEmails };
+module.exports = { sendOrderEmails };

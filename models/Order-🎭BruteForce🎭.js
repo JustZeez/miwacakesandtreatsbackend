@@ -1,29 +1,28 @@
 const mongoose = require('mongoose');
 
-
 const orderSchema = mongoose.Schema({
-    orderId:{
+    orderId: {
         type: String,
         required: true,
         unique: true,
     },
-    customerName:{
+    customerName: {
         type: String,
         required: true
     },
-    customerEmail:{
+    customerEmail: {
         type: String,
         required: true
     },
-    phone:{
+    phone: {
         type: String,
         required: true
     },
-    whatsApp:{
+    whatsapp: {
         type: String,
-        required:true
+        required: true
     },
-    address:{
+    address: {
         type: String,
         required: true
     },
@@ -31,29 +30,37 @@ const orderSchema = mongoose.Schema({
         type: String,
         required: true
     },
-    cartItems: [
-        {
-            name: String,
-            quantity: Number,
-            price: Number,
-            total: Number,
-        }
-    ],
-    totalAmount:{
+ 
+cartItems: [{
+    _id: { type: String, required: true }, 
+    name: String,
+    price: Number,
+    quantity: Number,
+    image: String
+  }],
+    subtotal: { 
         type: Number,
         required: true
     },
-    orderDate:{
+    vat: { 
+        type: Number,
+        default: 0
+    },
+    totalAmount: {
+        type: Number,
+        required: true
+    },
+    orderDate: {
         type: Date,
         default: Date.now
     },
-    status:{
+    status: {
         type: String,
         enum: ['pending', 'confirmed', 'preparing', 'ready', 'delivered'],
         default: 'pending'
     }
 }, {
-    timestamps:true
+    timestamps: true
 });
 
 const Order = mongoose.model('Order', orderSchema);
